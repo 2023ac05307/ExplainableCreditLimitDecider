@@ -1,0 +1,9 @@
+# airflow/requirements.txt
+# Keep Airflow DAG dependencies minimal.
+# Heavy ML deps should NOT be here (put them in training container image).
+
+apache-airflow-providers-amazon
+pandas
+pyarrow
+scikit-learn
+mlflow

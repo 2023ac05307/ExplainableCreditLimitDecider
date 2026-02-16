@@ -1,0 +1,68 @@
+# Model + training defaults for your 2-step system.
+# Keep these as "sane defaults"; override via CLI/env for experiments.
+
+seed: 42
+device: "auto"   # auto/cpu/cuda
+
+data:
+  obs_dim: null          # set automatically from columns if possible
+  target_col: "action"   # HOLD/CLI/CLD or encoded label
+  customer_id_col: "cust_id"
+  time_col: "month"
+
+architecture:
+  shared:
+    hidden: 256
+    num_layers: 2
+    dropout: 0.10
+    layer_norm: true
+    activation: "relu"
+
+  gate:        # HOLD vs NON_HOLD
+    output_dim: 1
+    loss: "bce"
+    threshold_default: 0.50
+
+  direction:   # CLI vs CLD on non-hold
+    output_dim: 1
+    loss: "bce"
+    threshold_default: 0.50
+
+  magnitude:   # regression head used after CLI/CLD decision
+    head: "beta"        # beta | gaussian | huber
+    max_pct: 50.0       # cap magnitude percent
+    huber_delta: 1.0
+
+training:
+  epochs: 20
+  batch_size: 4096
+  lr: 0.0002
+  weight_decay: 0.0
+  grad_clip_norm: 1.0
+  early_stopping:
+    enabled: true
+    patience: 5
+    metric: "val_f1"
+    mode: "max"
+  scheduler:
+    enabled: false
+    name: "cosine"
+    warmup_steps: 500
+
+evaluation:
+  metrics:
+    - "accuracy"
+    - "balanced_accuracy"
+    - "precision"
+    - "recall"
+    - "f1"
+    - "auc"
+  confusion_matrix: true
+  save_predictions: true
+
+explainability:
+  enabled: true
+  method: "shap"           # shap | integrated_gradients | gradient
+  background_samples: 512
+  explain_samples: 200
+  top_k_features: 15

@@ -1,0 +1,46 @@
+# Production-friendly logging: structured, consistent, and easy to parse.
+# Use JSON logs if you want to ship to ELK/CloudWatch later.
+
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  standard:
+    format: "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+  rich:
+    format: "%(asctime)s | %(levelname)s | %(name)s | %(filename)s:%(lineno)d | %(message)s"
+  json:
+    # If your code doesn't support json formatter, keep using 'standard'
+    format: '{"ts":"%(asctime)s","lvl":"%(levelname)s","logger":"%(name)s","msg":"%(message)s"}'
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: INFO
+    formatter: standard
+    stream: ext://sys.stdout
+
+  file:
+    class: logging.handlers.RotatingFileHandler
+    level: INFO
+    formatter: rich
+    filename: "logs/app.log"
+    maxBytes: 10485760  # 10MB
+    backupCount: 5
+    encoding: utf8
+
+root:
+  level: INFO
+  handlers: [console, file]
+
+loggers:
+  # quiet noisy libs
+  urllib3:
+    level: WARNING
+    propagate: true
+  botocore:
+    level: WARNING
+    propagate: true
+  matplotlib:
+    level: WARNING
+    propagate: true

@@ -1,0 +1,41 @@
+# Data & concept drift configuration for monitoring.
+# Use PSI / KS / Wasserstein depending on feature type.
+# Keep these thresholds conservative (production safe).
+
+enabled: true
+
+reference_window:
+  # What you consider "baseline" (historical stable period)
+  type: "rolling"
+  months: 6
+
+monitor_window:
+  # What you compare against baseline
+  months: 1
+
+features:
+  numeric_method: "psi"        # psi | ks | wasserstein
+  categorical_method: "psi"    # psi for encoded categories
+
+thresholds:
+  psi:
+    low: 0.10        # watch
+    medium: 0.20     # warn
+    high: 0.30       # alert / retrain trigger
+  ks_pvalue:
+    warn_below: 0.05
+  wasserstein:
+    warn_above: 0.20
+
+triggers:
+  # When to trigger retrain / human review
+  retrain_on:
+    - "high"
+  alert_on:
+    - "medium"
+    - "high"
+
+reporting:
+  save_report: true
+  report_path: "reports/drift_report.json"
+  max_features_listed: 30

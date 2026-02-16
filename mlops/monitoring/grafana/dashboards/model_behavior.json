@@ -1,0 +1,44 @@
+{
+  "uid": "model-behavior",
+  "title": "Model Behavior",
+  "schemaVersion": 38,
+  "version": 1,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Action Distribution (per hour)",
+      "id": 1,
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum by (action) (increase(creditlimit_predictions_total[1h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Inference Stage Latency",
+      "id": 2,
+      "gridPos": { "x": 0, "y": 8, "w": 16, "h": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, stage) (rate(creditlimit_inference_stage_latency_seconds_bucket[5m])))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Active Model Bundle",
+      "id": 3,
+      "gridPos": { "x": 16, "y": 8, "w": 8, "h": 6 },
+      "targets": [
+        {
+          "expr": "creditlimit_active_model_bundle",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

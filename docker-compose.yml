@@ -1,0 +1,227 @@
+version: "3.9"
+
+services:
+  # -----------------------------
+  # MLflow (local sqlite backend + local artifacts)
+  # -----------------------------
+  mlflow:
+    build:
+      context: .
+      dockerfile: mlops/docker/mlflow.Dockerfile
+    image: credit-mlflow:local
+    user: "0:0"
+    ports:
+      - "5000:5000"
+    networks: [ecld-net]  
+    environment:
+      - MLFLOW_BACKEND_STORE_URI=sqlite:////mlflow/mlflow.db
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT=mlflow-artifacts:/
+    volumes:
+      - ./checkpoints:/host _checkpoints:ro
+      - mlflow_data:/mlflow      
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --serve-artifacts
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts
+
+  # -----------------------------
+  # FastAPI serving (credit limit decider)
+  # -----------------------------
+  api:
+    build:
+      context: .
+      dockerfile: mlops/docker/fastapi.Dockerfile
+    image: credit-fastapi-fix:prod
+    ports:
+      - "${SERVE_PORT:-8000}:8000"
+    depends_on:
+      mlflow:
+        condition: service_started
+    networks: [ecld-net]    
+    environment:
+      # Mirrors your docker run flags (you can keep overriding via .env)
+      - CKPT_ROOT=${CKPT_ROOT:-/app/checkpoints}
+      - SERVE_FEATURES_PARQUET=${SERVE_FEATURES_PARQUET:-/app/reports/next_month_prediction}
+      - SERVE_DEVICE=${SERVE_DEVICE:-cpu}
+      - SERVE_CUST_ID_COL=${SERVE_CUST_ID_COL:-cust_id}
+      - SERVE_FEATURE_PREFIX=${SERVE_FEATURE_PREFIX:-s_}
+      - MODEL_STAGE=Production        # or Staging
+      - MODEL_NAME_GATE=cl_policy_gate
+      - MODEL_NAME_DIR=cl_policy_dir
+      - MODEL_NAME_MAG_CLI=cl_mag_cli
+      - MODEL_NAME_MAG_CLD=cl_mag_cld
+
+
+      # LLM (Ollama)
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.1:8b}
+
+      # MLflow tracking (✅ inside compose use service hostname)
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+
+      # ✅ Enable “load from MLflow Registry alias” in serving
+      - SERVE_USE_MLFLOW=${SERVE_USE_MLFLOW:-1}
+      - MODEL_ALIAS=${MODEL_ALIAS:-champion}
+      - MODEL_CACHE_DIR=${MODEL_CACHE_DIR:-/app/artifacts_cache}
+
+      # ✅ Registry model names (match what you registered in run_all.py)
+      - MLFLOW_GATE_MODEL=${MLFLOW_GATE_MODEL:-cl_policy_gate}
+      - MLFLOW_DIR_MODEL=${MLFLOW_DIR_MODEL:-cl_policy_dir}
+      - MLFLOW_MAG_CLI_MODEL=${MLFLOW_MAG_CLI_MODEL:-cl_mag_cli}
+      - MLFLOW_MAG_CLD_MODEL=${MLFLOW_MAG_CLD_MODEL:-cl_mag_cld}
+    volumes:
+      - ./reports:/app/reports:ro
+      - api_checkpoints:/checkpoints
+
+      # ✅ Cache downloaded “champion/challenger” bundles here
+      - model_cache:/app/artifacts_cache
+    command: >
+      uvicorn src.serving.api:app
+      --host 0.0.0.0
+      --port 8000
+
+  # -----------------------------
+  # Airflow (local dev)
+  # -----------------------------
+  airflow:
+    build:
+      context: .
+      dockerfile: mlops/docker/airflow.Dockerfile
+    image: ecld-airflow-gpu-enabled:prod
+    ports:
+      - "8080:8080"
+    runtime: nvidia  
+    environment:
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
+      - AIRFLOW__WEBSERVER__WEB_SERVER_PID_FILE=/tmp/airflow-webserver.pid
+      - AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth
+      - AIRFLOW__LOGGING__LOGGING_LEVEL=DEBUG
+      # Optional: allow DAGs to call API/MLflow/Ollama by service name
+      - CREDIT_API_URL=http://api:8000
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - PYTHONPATH=/opt/airflow/app
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - CKPT_ROOT=/host_checkpoints
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - GIT_PYTHON_REFRESH=quiet                  
+
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./src:/opt/airflow/app/src
+      - ./airflow/dags:/opt/airflow/dags
+      - ./:/opt/airflow/app              
+      - ./checkpoints:/host_checkpoints:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./:/opt/airflow/app
+      - mlflow_data:/mlflow
+      - airflow_logs:/opt/airflow/logs
+      - airflow_state:/opt/airflow
+    networks: [ecld-net]                
+    depends_on:
+      - api
+      - mlflow
+    command: airflow standalone
+
+  drift-agent:
+    build:
+      context: .
+      dockerfile: mlops/docker/driftagent.Dockerfile
+    container_name: drift-agent
+    environment:
+      - REPORTS_DIR=/shared/reports
+      - EVAL_DIR=/shared/reports/eval
+      - STATE_PATH=/shared/reports/agent_state.json
+      - AIRFLOW_DAG_ID=mlflow_train_pipeline_taskflow   # <-- set to your DAG ID
+      - POLL_SECONDS=30
+      - COOLDOWN_SECONDS=900
+      - AIRFLOW_BASE_URL=http://airflow:8080
+      - AIRFLOW_USERNAME=airflow
+      - AIRFLOW_PASSWORD=airflow     
+
+      # thresholds
+      - THRESH_GATE_BRIER=0.12
+      - THRESH_ACTION_JS=0.10
+      - THRESH_MAX_FEATURE_PSI=0.25
+      - THRESH_NUM_FEATURES_PSI=5
+    volumes:
+      - ./reports:/shared/reports  # MUST be same reports volume used by Airflow/eval
+    networks: [ecld-net]  
+    depends_on:
+      - airflow
+    restart: unless-stopped
+
+
+
+
+  # -----------------------------
+  # Monitoring
+  # -----------------------------
+  prometheus:
+    image: prom/prometheus:latest
+    ports: ["9090:9090"]
+    volumes:
+      - ./mlops/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./mlops/monitoring/prometheus/rules:/etc/prometheus/rules:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    networks: [ecld-net]  
+    depends_on:
+      - pushgateway
+      - cadvisor
+      - blackbox
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    ports: ["9093:9093"]
+    volumes:
+      - ./mlops/monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    networks: [ecld-net]
+  pushgateway:
+    image: prom/pushgateway:latest
+    ports: ["9091:9091"]
+    networks: [ecld-net]
+  grafana:
+    image: grafana/grafana:latest
+    ports: ["3000:3000"]
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./mlops/monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./mlops/monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    networks: [ecld-net]
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    ports: ["8081:8081"]
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks: [ecld-net]
+  blackbox:
+    image: prom/blackbox-exporter:latest
+    ports: ["9115:9115"]
+    volumes:
+      - ./mlops/monitoring/blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    command:
+      - --config.file=/etc/blackbox_exporter/config.yml
+    networks: [ecld-net]
+volumes:
+  model_cache:
+  mlflow_data:
+  airflow_logs:
+  airflow_state:
+  api_checkpoints:
+networks:
+  ecld-net:
+    name: ecld-net
+

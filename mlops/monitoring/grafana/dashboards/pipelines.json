@@ -1,0 +1,56 @@
+{
+  "uid": "pipelines",
+  "title": "Pipelines",
+  "schemaVersion": 38,
+  "version": 1,
+  "panels": [
+    {
+      "type": "table",
+      "title": "Last Run Timestamp",
+      "id": 1,
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 6 },
+      "targets": [
+        {
+          "expr": "ml_job_last_run_timestamp",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Pipeline Status",
+      "id": 2,
+      "gridPos": { "x": 0, "y": 6, "w": 12, "h": 6 },
+      "targets": [
+        {
+          "expr": "ml_job_success",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Pipeline Duration (s)",
+      "id": 3,
+      "gridPos": { "x": 12, "y": 6, "w": 12, "h": 6 },
+      "targets": [
+        {
+          "expr": "ml_job_duration_seconds",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Drift Detected",
+      "id": 4,
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 4 },
+      "targets": [
+        {
+          "expr": "ml_job_drift_detected{job=\"drift_check\"}",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

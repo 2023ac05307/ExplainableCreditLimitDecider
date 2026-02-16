@@ -1,0 +1,55 @@
+# Promotion gates for champion/challenger strategy.
+# Your pipeline can log metrics to MLflow and decide stage transitions using these rules.
+
+enabled: true
+
+stages:
+  candidate: "Staging"
+  champion: "Production"
+
+comparison:
+  # Compare challenger vs current champion
+  mode: "relative"     # relative | absolute
+  require_all: true    # all gates must pass
+
+gates:
+  # 1) Gate model quality (HOLD vs NON_HOLD)
+  gate_f1:
+    metric: "gate_val_f1"
+    operator: ">="
+    value: 0.80
+  gate_recall_nonhold:
+    metric: "gate_val_recall_nonhold"
+    operator: ">="
+    value: 0.70
+
+  # 2) Direction quality (CLI vs CLD on TRUE NONHOLD)
+  dir_f1:
+    metric: "dir_val_f1"
+    operator: ">="
+    value: 0.90
+
+  # 3) Overall 3-class macro F1 (optional if you compute)
+  macro_f1:
+    metric: "final_macro_f1"
+    operator: ">="
+    value: 0.75
+
+  # 4) Magnitude regression quality on true nonhold
+  mag_mae_pp:
+    metric: "mag_val_mae_pp"
+    operator: "<="
+    value: 6.0
+
+safety:
+  # Do not promote if drift is high OR if action distribution is crazy
+  block_on_high_drift: true
+  distribution_shift:
+    enabled: true
+    metric: "pred_action_nonhold_rate"
+    min: 0.01
+    max: 0.20
+
+audit:
+  require_run_notes: true
+  notes_field: "run_reason"   # stored as MLflow tag/param

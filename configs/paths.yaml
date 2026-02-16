@@ -1,0 +1,62 @@
+# Central place to control all paths.
+# Keep these relative so it works locally + in Docker + CI.
+
+project_root: "."
+
+
+# ---- data_pipeline required keys (flat) ----
+# sim_dir: folder containing simulator CSV outputs
+sim_dir: "data/raw"
+
+# rl_dataset output root (data_pipeline writes snapshots/trajectories here)
+dataset_dir: "rl_dataset"
+
+# optional overrides (if you want explicit paths)
+splits_dir: "rl_dataset/splits"
+gate_dir_dir: "rl_dataset/gate_dir"
+
+# pipeline behavior knobs
+seed: 42
+val_frac: 0.10
+test_frac: 0.10
+batch_rows: 200000
+compression: "snappy"
+
+do_split: true
+do_augment: true
+do_gate_dir: true
+
+
+data:
+  raw_dir: "data/raw"
+  curated_dir: "data/curated"
+  features_dir: "data/features"
+  splits_dir: "data/splits"
+  predictions_dir: "data/preds"
+  reports_dir: "reports"
+  artifacts_dir: "artifacts"
+
+checkpoints:
+  root: "checkpoints"
+  gate_dir: "checkpoints/gate"
+  dir_dir: "checkpoints/dir"
+  mag_dir: "checkpoints/magnitude"
+
+mlflow:
+  # Set to http://mlflow:5000 in docker-compose, or local file store
+  tracking_uri: "127.0.0.1:5000"
+  experiment: "ExplainableCreditLimitDecider"
+  registry_model_prefix: "ECLD"   # model names become ECLD_gate, ECLD_dir, etc.
+
+# Inputs expected by train_pipeline (adapt names if your script uses different ones)
+inputs:
+  train_parquet: "data/curated/train.parquet"
+  val_parquet: "data/curated/val.parquet"
+  test_parquet: "data/curated/test.parquet"
+
+
+datasets:
+  trajectories:
+    train_aug_3cls: "rl_dataset/splits/trajectories_aug"
+    val_3cls: "rl_dataset/splits/trajectories_val.parquet"
+    test_3cls: "rl_dataset/splits/trajectories_test.parquet"

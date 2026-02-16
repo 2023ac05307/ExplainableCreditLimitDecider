@@ -1,0 +1,412 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Explainable Credit Limit Decider</title>
+
+  <style>
+    /* UX Highlighter */
+    .highlight {
+      position: relative;
+      z-index: 2;
+      box-shadow:
+        0 0 0 2px rgba(122,162,255,.8),
+        0 0 0 8px rgba(122,162,255,.15);
+      border-radius: 14px;
+      transition: all .25s ease;
+    }
+    option:checked {
+      background: linear-gradient(
+        90deg,
+        rgba(122,162,255,.35),
+        rgba(49,208,127,.35)
+      );
+      color: #fff;
+    }
+    
+    .dimmed {
+      opacity: 0.25;
+      filter: blur(1px);
+      transition: all .25s ease;
+    }
+
+    .focus-ring {
+      animation: pulse 1.4s ease infinite;
+    }
+
+    .cardHd {
+      border-bottom: 1px dashed rgba(255,255,255,.12);
+      padding-bottom: 10px;
+    }
+    
+    .explain li {
+      padding: 8px 10px;
+      border-radius: 10px;
+      margin-bottom: 6px;
+      background: rgba(255,255,255,.03);
+    }
+
+    .explain li:has(.impactPos) {
+      background: rgba(49,208,127,.12);
+    }
+
+    .explain li:has(.impactNeg) {
+      background: rgba(255,77,109,.12);
+    }
+
+
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(122,162,255,.4); }
+      70% { box-shadow: 0 0 0 10px rgba(122,162,255,0); }
+      100% { box-shadow: 0 0 0 0 rgba(122,162,255,0); }
+    }
+    :root{
+      --bg:#0b1220;
+      --card:#111a2e;
+      --card2:#0f1730;
+      --txt:#e9eefc;
+      --muted:#aab6d6;
+      --line:rgba(255,255,255,.08);
+      --good:#31d07f;
+      --bad:#ff4d6d;
+      --warn:#ffcc00;
+
+      --cli:#31d07f;
+      --cld:#ff4d6d;
+      --hold:#7aa2ff;
+
+      --shadow: 0 14px 40px rgba(0,0,0,.35);
+      --r:18px;
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      background: radial-gradient(1200px 800px at 20% 0%, rgba(122,162,255,.25), transparent 50%),
+                  radial-gradient(1200px 800px at 90% 10%, rgba(49,208,127,.18), transparent 45%),
+                  var(--bg);
+      color: var(--txt);
+    }
+
+    .topbar{
+      position: sticky; top:0; z-index:10;
+      backdrop-filter: blur(10px);
+      background: rgba(11,18,32,.65);
+      border-bottom: 1px solid var(--line);
+    }
+    .topbar .inner{
+      max-width:1200px; margin:0 auto;
+      padding:14px 18px;
+      display:flex; justify-content:space-between; align-items:center;
+      gap:12px;
+    }
+    .brand{
+      display:flex; align-items:center; gap:12px;
+    }
+    .logo{
+      width:40px; height:40px; border-radius:14px;
+      background: linear-gradient(135deg, rgba(122,162,255,1), rgba(49,208,127,1));
+      box-shadow: var(--shadow);
+    }
+    .title h1{ margin:0; font-size:16px; letter-spacing:.2px; }
+    .title div{ margin-top:2px; font-size:12px; color:var(--muted); }
+
+    .health{
+      display:flex; align-items:center; gap:10px;
+      font-size:12px; color:var(--muted);
+    }
+    .dot{
+      width:10px; height:10px; border-radius:99px;
+      background: var(--warn);
+      box-shadow: 0 0 0 6px rgba(255,255,255,.03);
+    }
+
+    .wrap{
+      max-width:1200px; margin:0 auto; padding:18px;
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns: 380px 1fr;
+      gap:16px;
+    }
+    @media(max-width: 980px){
+      .grid{ grid-template-columns: 1fr; }
+    }
+
+    .panel{
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border:1px solid var(--line);
+      border-radius: var(--r);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .panel .hd{
+      padding:14px 14px 10px 14px;
+      border-bottom:1px solid var(--line);
+      display:flex; justify-content:space-between; align-items:center;
+    }
+    .panel .hd .h{
+      font-weight:700; font-size:13px;
+      letter-spacing:.2px;
+    }
+    .panel .hd .sub{
+      font-size:12px; color:var(--muted);
+    }
+    .panel .bd{
+      padding:14px;
+    }
+
+    select{
+      width:100%;
+      min-height: 320px;
+      background: rgba(0,0,0,.25);
+      border:1px solid var(--line);
+      border-radius: 14px;
+      padding:10px;
+      color: var(--txt);
+      outline:none;
+    }
+    option{ padding:6px; }
+
+    .btns{ display:flex; flex-direction:column; gap:10px; margin-top:12px; }
+    button{
+      width:100%;
+      padding:12px 12px;
+      border-radius: 14px;
+      border:1px solid var(--line);
+      background: rgba(255,255,255,.06);
+      color: var(--txt);
+      cursor:pointer;
+      font-weight:600;
+      transition: transform .06s ease, background .15s ease;
+    }
+    button:hover{ background: rgba(255,255,255,.10); }
+    button:active{ transform: translateY(1px); }
+    button:disabled{ opacity:.55; cursor:not-allowed; }
+
+    .row{
+      display:flex; justify-content:space-between; gap:10px;
+      margin-top:10px; color:var(--muted); font-size:12px;
+    }
+
+    .tabs{
+      display:flex; gap:10px; padding:12px 14px;
+      border-bottom:1px solid var(--line);
+      background: rgba(0,0,0,.12);
+      align-items:center;
+    }
+    .tab{
+      padding:9px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.05);
+      cursor:pointer;
+      font-size:12px; color:var(--muted);
+      user-select:none;
+    }
+    .tab.active{
+      background: rgba(122,162,255,.18);
+      color: var(--txt);
+      border-color: rgba(122,162,255,.25);
+    }
+    .viewLabel{
+      margin-left:auto;
+      font-size:12px; color:var(--muted);
+    }
+
+    .hint{
+      padding:16px;
+      border: 1px dashed rgba(255,255,255,.12);
+      border-radius: 14px;
+      color: var(--muted);
+      background: rgba(0,0,0,.16);
+    }
+
+    .tableWrap{ overflow:auto; border-radius: 14px; border:1px solid var(--line); }
+    table{ width:100%; border-collapse: collapse; min-width: 920px; }
+    th, td{
+      padding:10px 10px;
+      border-bottom: 1px solid var(--line);
+      font-size:12px;
+      text-align:left;
+      white-space: nowrap;
+    }
+    th{
+      position: sticky; top:0;
+      background: rgba(17,26,46,.95);
+      cursor:pointer;
+      color: var(--muted);
+      font-weight:700;
+      letter-spacing:.2px;
+    }
+    td.num, th.num{ text-align:right; }
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+    .tag{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:6px 10px;
+      border-radius: 999px;
+      border:1px solid var(--line);
+      background: rgba(255,255,255,.05);
+      font-weight:700;
+      font-size:11px;
+    }
+    .tDot{ width:8px; height:8px; border-radius:99px; background:var(--hold); }
+    .tag.cli .tDot{ background: var(--cli); }
+    .tag.cld .tDot{ background: var(--cld); }
+    .tag.hold .tDot{ background: var(--hold); }
+
+    .cards{
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap:12px;
+    }
+    @media(max-width: 980px){
+      .cards{ grid-template-columns: 1fr; }
+    }
+    .card{
+      background: rgba(0,0,0,.18);
+      border:1px solid var(--line);
+      border-radius: var(--r);
+      padding:14px;
+      box-shadow: var(--shadow);
+    }
+    .cardHd{
+      display:flex; justify-content:space-between; align-items:center;
+      margin-bottom:10px;
+    }
+    .cardTitle{ display:flex; align-items:center; gap:10px; }
+    .pill{
+      padding:6px 10px;
+      border-radius: 999px;
+      border:1px solid var(--line);
+      background: rgba(255,255,255,.05);
+      font-size:12px; color: var(--muted);
+    }
+    .kv{
+      display:flex; flex-wrap: wrap; gap:8px;
+      margin-bottom:10px;
+    }
+    .explain b{ display:block; margin-bottom:8px; }
+    .explain ul{ margin:0; padding-left:18px; color: var(--muted); }
+    .impactPos{ color: var(--good); font-weight:900; margin-right:6px; }
+    .impactNeg{ color: var(--bad);  font-weight:900; margin-right:6px; }
+
+    details{
+      border:1px solid var(--line);
+      border-radius: 14px;
+      padding:10px 12px;
+      background: rgba(255,255,255,.04);
+      margin-top:10px;
+    }
+    summary{ cursor:pointer; color: var(--txt); font-weight:700; }
+    .small{ color: var(--muted); font-size:12px; margin-top:8px; line-height:1.45; }
+
+    .spinner{
+      display:none;
+      width:14px; height:14px;
+      border-radius: 99px;
+      border:2px solid rgba(255,255,255,.25);
+      border-top-color: rgba(255,255,255,.85);
+      animation: spin .8s linear infinite;
+      vertical-align: middle;
+      margin-left:8px;
+    }
+    @keyframes spin{ to{ transform: rotate(360deg); } }
+
+    .toast{
+      position: fixed;
+      right: 18px; bottom: 18px;
+      width: 320px;
+      background: rgba(17,26,46,.95);
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      padding: 12px 12px;
+      box-shadow: var(--shadow);
+      transform: translateY(18px);
+      opacity: 0;
+      pointer-events:none;
+      transition: all .18s ease;
+    }
+    .toast.show{
+      transform: translateY(0);
+      opacity: 1;
+    }
+    .toast .t1{ font-weight:800; font-size:13px; }
+    .toast .t2{ margin-top:4px; font-size:12px; color:var(--muted); line-height:1.4; }
+  </style>
+</head>
+
+<body>
+  <div class="topbar">
+    <div class="inner">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <h1>Explainable Credit Limit Decider</h1>
+          <div>Data-Driven Decisions with Built-In Transparency</div>
+        </div>
+      </div>
+      <div class="health">
+        <span class="dot" id="healthDot"></span>
+        <span id="healthText">Checking service…</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="grid">
+
+      <!-- Left: customer selection -->
+      <div class="panel">
+        <div class="hd">
+          <div>
+            <div class="h">Select Customer IDs</div>
+            <div class="sub">For transparent credit limit decisioning • <span class="mono" id="selectedCount">0</span> selected</div>
+          </div>
+        </div>
+        <div class="bd">
+          <select id="custSelect" multiple></select>
+
+          <div class="btns">
+            <button id="btnPredict">Predict Updated Limit <span class="spinner" id="spinPredict"></span></button>
+            <button id="btnExplain">Explain Decision (Model) <span class="spinner" id="spinExplain"></span></button>
+            <button id="btnExplainPred">Explain Predicted Limit (Customer) <span class="spinner" id="spinExplainPred"></span></button>
+            <button id="btnClear">Clear Output</button>
+          </div>
+
+          <div class="row">
+            <div id="status"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: results -->
+      <div class="panel">
+        <div class="tabs">
+          <div class="tab active" id="tabPredict">Predictions</div>
+          <div class="tab" id="tabExplain">Model Explanations</div>
+          <div class="tab" id="tabExplainPred">Customer Explanation</div>
+          <div class="viewLabel">View: <span id="viewModeLabel">Predictions</span></div>
+        </div>
+        <div class="bd">
+          <div id="results">
+            <div class="hint">Select customers on the left and run <b>Predict</b> or <b>Explain</b>. Results will appear here.</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="toast" id="toast">
+    <div class="t1" id="toastT1">Info</div>
+    <div class="t2" id="toastT2"></div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

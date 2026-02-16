@@ -1,0 +1,49 @@
+groups:
+- name: creditlimit-serving
+  rules:
+  - alert: ApiDown
+    expr: up{job="fastapi"} == 0
+    for: 1m
+    labels: { severity: "critical" }
+    annotations:
+      summary: "API down"
+      description: "FastAPI target is not scrapeable for >1m."
+
+  - alert: High5xxErrorRate
+    expr: |
+      (sum(rate(creditlimit_requests_total{status=~"5.."}[5m])) /
+       sum(rate(creditlimit_requests_total[5m]))) > 0.02
+    for: 5m
+    labels: { severity: "critical" }
+    annotations:
+      summary: "High 5xx error rate"
+      description: "5xx ratio > 2% for 5m."
+
+  - alert: HighP95Latency
+    expr: |
+      histogram_quantile(0.95,
+        sum by (le) (rate(creditlimit_request_latency_seconds_bucket[5m]))
+      ) > 1.0
+    for: 10m
+    labels: { severity: "warning" }
+    annotations:
+      summary: "High p95 latency"
+      description: "p95 latency > 1s for 10m."
+
+- name: pipelines
+  rules:
+  - alert: DriftCheckFailed
+    expr: ml_job_success{job="drift_check"} == 0
+    for: 1m
+    labels: { severity: "warning" }
+    annotations:
+      summary: "Drift check failed"
+      description: "Latest drift_check pushed failure."
+
+  - alert: TrainPipelineFailed
+    expr: ml_job_success{job="train_pipeline"} == 0
+    for: 1m
+    labels: { severity: "critical" }
+    annotations:
+      summary: "Train pipeline failed"
+      description: "Latest train_pipeline pushed failure."

@@ -1,0 +1,20 @@
+# Central thresholds for inference + evaluation.
+# These should be tracked in MLflow and promoted with the model.
+
+gate:
+  # If gate_prob >= thr => NON_HOLD else HOLD
+  default: 0.75
+  min: 0.10
+  max: 0.95
+
+direction:
+  # On NON_HOLD: if dir_prob >= thr => CLI else CLD (or vice versa depending on label mapping)
+  default: 0.23
+  min: 0.05
+  max: 0.95
+
+magnitude:
+  mode: "scale"       # scale | frac | max_head
+  scale: 40.0         # if used
+  max_pct: 50.0       # cap
+  round_to: 0.01      # for finance rounding
